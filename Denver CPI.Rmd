@@ -1,0 +1,96 @@
+---
+title: "Denver CPI"
+author: "Jacob Dubbert"
+date: "10/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r, libraries}
+library(tidyverse)
+library(tidyquant)
+library(scales)
+library(tibbletime)
+library(data.table)
+library(rlang)
+library(ggridges)
+library(viridis)
+library(ggbeeswarm)
+library(bea.R)
+library(ggthemes)
+library(lubridate)
+library(data.table)
+library(fredr)
+library(gganimate)
+library(gifski)
+library(tweenr)
+```
+
+## Inflation
+```{r, inflation CO data, include=FALSE}
+dt<- 
+  # data
+  fread('http://download.bls.gov/pub/time.series/cu/cu.data.2.Summaries') %>% 
+  #series ids
+  left_join(fread("http://download.bls.gov/pub/time.series/cu/cu.series"), by="series_id") %>%
+  # series names
+  left_join(fread("http://download.bls.gov/pub/time.series/cu/cu.item"),by="item_code")
+  
+  
+denver_cpi_2019 <- dt %>% filter(year==2019,area_code=="S48B", seasonal=="U")  %>% 
+  group_by(series_id)%>%
+  mutate(month=substr(period,2,3)) 
+denver_cpi_2019 <- denver_cpi_2019 %>% group_by(series_id) %>% mutate(avg=mean(value))
+denver_cpi_2019 <- distinct(denver_cpi_2019, series_id, .keep_all = TRUE)
+denver_cpi_2019 <- denver_cpi_2019 %>% filter(period=="M01")
+denver_cpi_2019$value <- denver_cpi_2019$avg
+denver_cpi_2019 <- denver_cpi_2019[,-23]
+denver_cpi_2019$period <- "S03"
+
+denver_cpi <- dt %>% filter(year>2000,area_code=="S48B", seasonal=="U", period=="S03")  %>% 
+  group_by(series_id)%>%
+  mutate(month=substr(period,2,3)) 
+denver_cpi <- rbind(denver_cpi, denver_cpi_2019)
+
+denver_cpi<- denver_cpi %>% group_by(item_name) %>%  mutate(y=100*value/value[year==2001&period=="S03"],
+  date=as.Date(ISOdate(year,as.numeric(substr(period,2,3)),1) ) ) %>% 
+  ungroup()
+```
+
+```{r, inflation CO plot}
+ggplot(data=denver_cpi,aes(x=date,y=y,color=item_code,label=item_name))+
+  geom_line()+
+  geom_text(data=. %>% filter(date==max(date)), hjust=1)+
+  theme(legend.position="none")+
+  scale_y_log10(breaks=c(75,100,125,150,175))+
+  scale_x_date(date_breaks="1 year", date_labels="%Y")+
+  labs(caption="Source: U.S. Bureau of Labor Statistics, Annual, not seasonally adjusted. 2019 values are average through Septempber",
+       title="Consumer Prices in the Denver-Aurora-Lakewood,CO Metro Area",
+       subtitle="Consumer Price index for All Urban Consumers (CPI-U) special aggregate indexes\nlog scale, Jan 2001=100",
+       y="")+
+  theme(plot.title=element_text(face="bold"),
+        plot.caption=element_text(hjust=0))
+```
+
+```{r, animate inflation CO plot}
+a <- 
+ggplot(data=denver_cpi,aes(x=date,y=y,color=item_code,label=item_name))+
+  geom_line()+
+  geom_text(hjust=1)+
+  theme(legend.position="none")+
+  scale_y_log10(breaks=c(75,100,125,150,175))+
+  scale_x_date(date_breaks="1 year", date_labels="%Y")+
+  labs(caption="Source: U.S. Bureau of Labor Statistics, Annual,not seasonally adjusted indexes. 2019 values are average through Septempber",
+       title="Consumer Prices in the Denver-Aurora-Lakewood,CO Metro Area",
+       subtitle="Consumer Price index for All Urban Consumers (CPI-U) special aggregate indexes\nlog scale, Jan 2001=100",
+
+       y="")+
+  theme(plot.title=element_text(face="bold"),
+        plot.caption=element_text(hjust=0))+
+  transition_reveal(date)
+
+animate(a,end_pause=20)
+```
